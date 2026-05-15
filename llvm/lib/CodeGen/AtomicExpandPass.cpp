@@ -699,7 +699,9 @@ StoreInst *AtomicExpandImpl::convertAtomicStoreToIntegerType(StoreInst *SI) {
   auto *M = SI->getModule();
   Type *NewTy = getCorrespondingIntegerType(SI->getValueOperand()->getType(),
                                             M->getDataLayout());
-  Value *NewVal = Builder.CreateBitCast(SI->getValueOperand(), NewTy);
+  Value *NewVal = SI->getValueOperand()->getType()->isPtrOrPtrVectorTy()
+                      ? Builder.CreatePtrToInt(SI->getValueOperand(), NewTy)
+                      : Builder.CreateBitCast(SI->getValueOperand(), NewTy);
 
   Value *Addr = SI->getPointerOperand();
 
@@ -2174,8 +2176,19 @@ bool AtomicExpandImpl::expandAtomicOpToLibcall(
   // 'val' argument ('desired' for cas), if present.
   if (ValueOperand) {
     if (UseSizedLibcall) {
-      Value *IntValue =
-          Builder.CreateBitOrPointerCast(ValueOperand, SizedIntTy);
+      // Add casts from ValueOperand's <n x ptr> vector type to Result's
+      // scalar integer type. Mirror of the load-side handling below.
+      Value *IntValue;
+      auto *VPtrTy =
+          dyn_cast<PointerType>(ValueOperand->getType()->getScalarType());
+      auto *VTy = dyn_cast<VectorType>(ValueOperand->getType());
+      if (VTy && VPtrTy && !SizedIntTy->isVectorTy()) {
+        unsigned AS = VPtrTy->getAddressSpace();
+        Value *PtrInt = Builder.CreatePtrToInt(
+            ValueOperand, VTy->getWithNewType(DL.getIntPtrType(Ctx, AS)));
+        IntValue = Builder.CreateBitCast(PtrInt, SizedIntTy);
+      } else
+        IntValue = Builder.CreateBitOrPointerCast(ValueOperand, SizedIntTy);
       Args.push_back(IntValue);
     } else {
       AllocaValue = AllocaBuilder.CreateAlloca(ValueOperand->getType());
