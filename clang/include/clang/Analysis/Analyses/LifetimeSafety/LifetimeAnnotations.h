@@ -57,8 +57,13 @@ bool implicitObjectParamIsLifetimeBound(const FunctionDecl *FD);
 // container iterators (begin, end), data accessors (c_str, data, get),
 // element accessors (operator[], operator*, front, back, at), or propagating
 // operations (operator+, operator-, operator++, operator--).
+//
+// `ActualObjectType` is the object's actual type at the call site (e.g., the
+// type before any `DerivedToBase` cast). It is included in the `gsl::Owner`
+// check, so inherited methods on non-annotated bases are still tracked.
 bool shouldTrackImplicitObjectArg(const CXXMethodDecl *Callee,
-                                  bool RunningUnderLifetimeSafety);
+                                  bool RunningUnderLifetimeSafety,
+                                  QualType ActualObjectType = QualType());
 
 // Returns true if the first argument of a free function should be tracked for
 // GSL lifetime analysis. This applies to STL free functions that take a pointer
